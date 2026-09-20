@@ -1,13 +1,21 @@
 """
 Pipeline de Normalizacion y Lematizacion de Texto en Espanol
 Texto de prueba: Don Quijote de la Mancha (Miguel de Cervantes)
+Checkpoint 2 + Checkpoint 4: incluye vectorizacion BoW y TF-IDF
 """
 
 import os
 import re
+import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use("Agg")  # Backend sin display para entornos de terminal
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 import spacy
 from nltk.stem import SnowballStemmer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.decomposition import PCA
 
 
 def cargar_modelo_spacy(nombre_modelo="es_core_news_sm"):
@@ -78,7 +86,7 @@ def ejecutar_limpieza(texto, nlp):
                 cambios_interesantes.append(f"{token.text} -> {lema}")
 
     print(f"Total de tokens normalizados: {len(tokens_normalizados)}")
-    print(f"Ejemplos de transformaciones morfologicas:")
+    print("Ejemplos de transformaciones morfologicas:")
     for cambio in cambios_interesantes:
         print(f"  * {cambio}")
 
@@ -128,12 +136,98 @@ def ejecutar_limpieza(texto, nlp):
     }
 
 
+def ejecutar_vectorizacion(doc):
+    """Construye corpus lematizado por oraciones y aplica BoW y TF-IDF."""
+    print("\n" + "=" * 60)
+    print("CHECKPOINT 4: VECTORIZACION DE TEXTO")
+    print("=" * 60)
+
+    # --- Corpus lematizado por oraciones ---
+    print("\n--- 6. Corpus lematizado por oraciones ---")
+    corpus_lematizado = []
+    for oracion in doc.sents:
+        lemas_oracion = [
+            token.lemma_.lower()
+            for token in oracion
+            if not token.is_punct and not token.is_space and not token.is_stop
+        ]
+        if lemas_oracion:
+            corpus_lematizado.append(" ".join(lemas_oracion))
+
+    print(f"Total de oraciones en el corpus: {len(corpus_lematizado)}")
+    print(f"Primera oracion del corpus: '{corpus_lematizado[0]}'")
+
+    # --- Bag of Words ---
+    print("\n--- 7a. Bag-of-Words (CountVectorizer) ---")
+    bow_vectorizer = CountVectorizer()
+    X_bow = bow_vectorizer.fit_transform(corpus_lematizado)
+    print(f"Forma de la matriz BoW: {X_bow.shape}  (oraciones x terminos)")
+    print(f"Vocabulario: {len(bow_vectorizer.vocabulary_)} terminos unicos")
+    print(f"Densidad (no-ceros / total): "
+          f"{X_bow.nnz / (X_bow.shape[0] * X_bow.shape[1]):.4f}")
+
+    # --- TF-IDF ---
+    print("\n--- 7b. TF-IDF (TfidfVectorizer) ---")
+    tfidf_vectorizer = TfidfVectorizer()
+    X_tfidf = tfidf_vectorizer.fit_transform(corpus_lematizado)
+    print(f"Forma de la matriz TF-IDF: {X_tfidf.shape}  (oraciones x terminos)")
+
+    vocab_tfidf = tfidf_vectorizer.get_feature_names_out()
+    primera = X_tfidf[0].toarray()[0]
+    top_indices = np.argsort(primera)[::-1][:10]
+    print("\nTop 10 terminos TF-IDF (primera oracion):")
+    for i in top_indices:
+        if primera[i] > 0:
+            print(f"  {vocab_tfidf[i]:<20} peso: {primera[i]:.4f}")
+
+    # --- Visualizacion 3D con PCA ---
+    print("\n--- 8. Visualizacion 3D con PCA ---")
+    _graficar_y_guardar(X_bow, bow_vectorizer.get_feature_names_out(),
+                        X_tfidf, vocab_tfidf)
+
+    return corpus_lematizado, X_bow, X_tfidf
+
+
+def _graficar_y_guardar(X_bow, vocab_bow, X_tfidf, vocab_tfidf):
+    """Genera el grafico 3D comparativo BoW vs TF-IDF y lo guarda como PNG."""
+
+    def _plot_3d(ax, matriz, vocabulario, titulo, color):
+        matriz_palabras = matriz.T
+        pca = PCA(n_components=3)
+        coords = pca.fit_transform(matriz_palabras.toarray())
+        x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
+        ax.scatter(x, y, z, c=color, s=80, edgecolors='k', alpha=0.8, depthshade=True)
+        for i, palabra in enumerate(vocabulario[:30]):
+            ax.text(x[i], y[i], z[i] + 0.01, palabra, fontsize=7)
+        ax.set_title(titulo, fontsize=12, fontweight='bold')
+        ax.set_xlabel('CP1')
+        ax.set_ylabel('CP2')
+        ax.set_zlabel('CP3')
+        ax.plot([0, 0], [0, 0], [z.min(), z.max()], c='grey', ls='--', lw=0.5, alpha=0.3)
+        ax.plot([x.min(), x.max()], [0, 0], [0, 0], c='grey', ls='--', lw=0.5, alpha=0.3)
+        ax.plot([0, 0], [y.min(), y.max()], [0, 0], c='grey', ls='--', lw=0.5, alpha=0.3)
+
+    fig = plt.figure(figsize=(18, 8))
+    fig.suptitle('Representacion Vectorial del Quijote - Cap. 1', fontsize=14)
+    ax1 = fig.add_subplot(121, projection='3d')
+    _plot_3d(ax1, X_bow, vocab_bow, 'Espacio BoW 3D (Conteos)', 'orange')
+    ax2 = fig.add_subplot(122, projection='3d')
+    _plot_3d(ax2, X_tfidf, vocab_tfidf, 'Espacio TF-IDF 3D (Importancia)', 'teal')
+    plt.tight_layout()
+
+    salida = os.path.join(os.path.dirname(os.path.abspath(__file__)), "espacio_vectorial_3d.png")
+    plt.savefig(salida, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"Figura guardada en: {salida}")
+
+
 def main():
     print("Iniciando pipeline de procesamiento de texto...")
     nlp = cargar_modelo_spacy("es_core_news_sm")
-    ruta_libro = os.path.join(os.path.dirname(__file__), "don_quijote.txt")
+    ruta_libro = os.path.join(os.path.dirname(os.path.abspath(__file__)), "don_quijote.txt")
     texto = cargar_texto(ruta_libro, solo_capitulo_1=True)
-    ejecutar_limpieza(texto, nlp)
+    resultado = ejecutar_limpieza(texto, nlp)
+    ejecutar_vectorizacion(resultado["doc"])
     print("\nProceso completado exitosamente.")
 
 
