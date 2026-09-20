@@ -17,6 +17,7 @@ debugpy==1.8.22
 defusedxml==0.7.1
 es_core_news_sm @ https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.8.0/es_core_news_sm-3.8.0-py3-none-any.whl#sha256=e451a83d6df79b87e9eed0cb553f03e99e36a3bab18a7b79f0dcfd1fdf875e12
 executing==2.2.1
+gensim==4.3.3
 h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1
